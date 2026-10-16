@@ -15,6 +15,8 @@ const href=(url,label,cls='')=>`<a class="${cls}" href="${esc(url)}" target="_bl
 
 let atlas=null,feature=null,activeTab='parcel',searchController=null,identifyController=null,searchDelay=null,toastTimer=null;
 let searchResults=[];
+let intel={status:'idle',apn:null,data:null,error:null};
+let intelController=null;
 const base='https://cty-gis-web.co.humboldt.ca.us/server/rest/services';
 const dataLinks=[
   ['Parcel attributes / polygons',PARCEL_LAYER],
@@ -27,7 +29,11 @@ const dataLinks=[
   ['Planning & Building Department',PDR],
   ['Building Inspection',COUNTY_ACCOUNTS],
   ['McKinleyville Community Services District',MCSD],
-  ['God’s Eye View — MIT upstream', 'https://github.com/bilawalsidhu/gods-eye-view']
+  ['God’s Eye View — MIT upstream', 'https://github.com/bilawalsidhu/gods-eye-view'],
+  ['FairProcess Maps — county integrations','https://github.com/mycomind4-arch/fairprocessmaps'],
+  ['Published county code enforcement snapshot',base+'/Web/Housing_Public/MapServer/7'],
+  ['Humboldt Assessor property inquiry','https://www.humboldtgov.org/230/Property-Assessment-Inquiry'],
+  ['County Recorder public index','https://humboldtcountyca-web.tylerhost.net/web/']
 ];
 
 E('#app').innerHTML=`
@@ -153,27 +159,115 @@ function sourceNote(url=PARCEL_LAYER){
 function verifyCard(title,body,url,cta){
   return `<div class="verify-card"><div class="verify-status">◉ NOT INDEPENDENTLY VERIFIED</div><h3>${esc(title)}</h3><p>${esc(body)}</p>${href(url,cta,'source-button')}</div>`;
 }
+function intelStatus(){
+  if(intel.status==='loading')return '<div class="intel-state"><span class="intel-loading">◌</span> Querying FairProcess GIS sources…</div>';
+  if(intel.status==='error')return '<div class="intel-state intel-error">County enrichment unavailable. '+esc(intel.error||'Please retry.')+'</div>';
+  if(intel.status!=='ready')return '<div class="intel-state">Select a valid 9- or 12-digit APN to query published GIS sources.</div>';
+  const count=intel.data?.enforcement?.records?.length||0;
+  const available=Object.values(intel.data?.spatial||{}).filter(x=>x.status!=='unavailable').length;
+  return '<div class="intel-state intel-ready"><span>◈ FAIRPROCESS DATA LINK</span><br>'+count+' historical enforcement case'+(count===1?'':'s')+' · '+available+' GIS layers queried<br><small>Checked '+esc(new Date(intel.data.obtained_at).toLocaleString())+' • Historical records may be incomplete.</small></div>';
+}
+
+function spatialPanel(keys){
+  if(intel.status!=='ready')return intelStatus();
+  const spatial=intel.data?.spatial||{};
+  const fragments=keys.map(key=>{
+    const info=spatial[key];
+    if(!info)return '';
+    const status=info.status==='unavailable'?'SOURCE UNAVAILABLE':info.status==='potential_intersection'?'POTENTIAL OVERLAP':'NO MATCH IN EXTENT';
+    const values=(info.records||[]).map(r=>'<div class="intel-grid">'+Object.entries(r).map(([k,v])=>
+      '<div class="intel-entry"><span>'+esc(k.replace(/_/g,' '))+'</span><strong>'+esc(String(v))+'</strong></div>'
+    ).join('')+'</div>').join('');
+    return '<article class="intel-card"><div class="intel-card-header"><b>'+esc(info.name||key)+'</b><span class="'+(info.status==='unavailable'?'intel-warning':'')+'">'+esc(status)+'</span></div>'+
+      values+
+      (info.status==='unavailable'?'<div class="intel-caution">Source could not be queried. No conclusion can be drawn.</div>':
+        '<div class="intel-caution">Bounding-box candidate check, not a definitive parcel-level determination.</div>')+
+      href(info.source_url,'OPEN OFFICIAL GIS LAYER','source-button')+'</article>';
+  });
+  return '<div class="section-subtitle">FAIRPROCESS GEOSPATIAL RECON · PUBLIC COUNTY LAYERS</div><div>'+fragments.join('')+'</div>';
+}
+
+function enforcementPanel(){
+  if(intel.status!=='ready')return intelStatus();
+  const results=intel.data?.enforcement;
+  if(!results)return '<div class="intel-state intel-error">No enforcement source response available.</div>';
+  const snapshot='County published dataset labeled January 15, 2025';
+  if(results.status==='unavailable'){
+    return '<div class="intel-state intel-error">Code enforcement snapshot request failed. Do not interpret as zero cases.</div>'+href(results.source_url,'OPEN SOURCE LAYER','source-button');
+  }
+  if(!results.records?.length){
+    return '<div class="intel-state">No matching entries in the '+esc(snapshot)+'. This does not mean the parcel has no newer, older, or confidential cases.</div>'+
+      href(results.source_url,'VIEW DATED COUNTY SOURCE','source-button');
+  }
+  const cases=results.records.map(c=>'<article class="case-card">'+
+    '<div class="case-number">CASE '+esc(c.case_number||'UNKNOWN')+' <span>HISTORICAL SNAPSHOT</span></div>'+
+    '<h3>'+esc(c.case_type||'Unspecified type')+'</h3>'+
+    '<div class="data-grid">'+
+      row('Opened',c.date_opened||null)+row('Record APN',c.apn||null)+
+      row('Source dataset',results.snapshot_date||null)+
+    '</div>'+href(c.source_url,'SOURCE FEATURE LAYER','source-button')+'</article>').join('');
+  return '<div class="section-subtitle">'+esc(String(results.records.length))+' PUBLISHED CASE RECORDS</div>'+
+    '<div class="intel-state intel-warning">CAUTION: '+esc(snapshot)+'. Published case type and opening date do not establish current status, notice service, due-process violations, final disposition, or any action against an individual.</div>'+
+    cases+(results.truncated?'<p class="intel-caution">Result count was limited; additional matches may exist.</p>':'');
+}
+
+function loadIntelligence(chosen){
+  intelController?.abort();
+  intelController=new AbortController();
+  const signal=intelController.signal;
+  const selectedAPN=apn(chosen);
+  if(!selectedAPN || !/^(?:\\d[\\s-]*){9}(?:(?:\\d[\\s-]*){3})?$/.test(selectedAPN)){
+    intel={status:'error',apn:selectedAPN,data:null,error:'GIS parcel identifier is not a supported APN format.'};
+    renderDossier();return;
+  }
+  intel={status:'loading',apn:selectedAPN,data:null,error:null};
+  renderDossier();
+  fetch('/api/intelligence?apn='+encodeURIComponent(selectedAPN),{signal,headers:{Accept:'application/json'}})
+    .then(async resp=>{
+      const result=await resp.json();
+      if(!resp.ok)throw new Error(result.error||'HTTP '+resp.status);
+      return result;
+    })
+    .then(data=>{
+      if(signal.aborted||feature!==chosen)return;
+      intel={status:'ready',apn:selectedAPN,data,error:null};
+      renderDossier();
+    })
+    .catch(e=>{
+      if(signal.aborted||feature!==chosen)return;
+      intel={status:'error',apn:selectedAPN,data:null,error:e.message};
+      renderDossier();
+    });
+}
+
 function tabView(tab,p){
   switch(tab) {
     case 'parcel': return `
       <div class="section-subtitle">OFFICIAL GIS ATTRIBUTE RECORD</div>
+      ${intelStatus()}
       <div class="data-grid">${fields(FIELDS.parcel,p)}</div>
       <div class="disclaimer"><b>Boundary and legal accuracy:</b> County polygons are for planning and visualization, not surveying, ownership proof or legal boundary determination.</div>${sourceNote()}`;
     case 'zoning': return `
       <div class="section-subtitle">PLANNING &amp; LAND USE</div>
+      ${intelStatus()}
       <div class="data-grid">${fields(FIELDS.zoning,p)}</div>
+      ${spatialPanel(['zoning','general_plan','school','fire_district'])}
       <div class="disclaimer">GIS zoning values are informational. Verify the effective zoning and any overlays with the Planning &amp; Building Department before relying on them.</div>${href(PDR,'Planning & Building Department','source-button')}${sourceNote()}`;
     case 'hazards': return `
       <div class="section-subtitle">ENVIRONMENTAL &amp; HAZARD ATTRIBUTES</div>
+      ${intelStatus()}
       <div class="data-grid">${fields(FIELDS.hazards,p)}</div>
+      ${spatialPanel(['tsunami','flood','fire','wetlands','streamside'])}
       <div class="disclaimer">An empty indicator does not establish absence of hazard risk. Use the county hazard service; mapped hazard data can be dated or incomplete.</div>
       ${href(base+'/Web/Hazards_Pub2/MapServer','County hazard overlays','source-button')}${sourceNote(base+'/Web/Hazards_Pub2/MapServer')}`;
     case 'permits': return `
+      <div class="intel-state intel-warning">FairProcess Accela permit scraping cannot currently verify a complete search result. Open the official permit portal directly; no records are imported or assumed absent.</div>
       ${verifyCard('Building & planning permits','A public API with parcel-linked permit results is not integrated. Search the official Accela portal using the APN or property address. No missing result is treated as proof of no permit.',ACCELA,'SEARCH OFFICIAL PERMIT RECORDS')}
       ${verifyCard('Inspections & violations','Building inspections and enforcement history must be checked separately with the responsible jurisdiction. GIS parcel attributes alone do not contain a verified case history.',COUNTY_ACCOUNTS,'BUILDING INSPECTION DEPARTMENT')}
       <div class="disclaimer">A parcel may fall within city limits; some permits and violations may be held by the city rather than the county.</div>`;
     case 'enforcement': return `
-      ${verifyCard('Code enforcement case history','No verified enforcement cases have been retrieved for this parcel. This means the records have not been searched, NOT that zero violations exist.',ACCELA,'SEARCH OFFICIAL ACCELA PORTAL')}
+      ${intelStatus()}
+      ${enforcementPanel()}
       <div class="action-list">
         <div><b>Useful record categories</b><small>Complaints and case numbers • notices of violation • inspection reports • notices and proof of service • abatement and demolition orders • warrant applications • hearing and appeal documents • cost recovery and liens</small></div>
       </div><button class="secondary-inline" data-request="true">CREATE A RECORDS REQUEST DRAFT ↗</button>`;
@@ -189,7 +283,7 @@ function tabView(tab,p){
       ${verifyCard('Official recorded instruments','Recorded deeds, easements, liens, title transfers, court judgments, and older historical documents need separate searches or records requests.',COUNTY_DOWNLOAD,'OPEN COUNTY GIS DATA CATALOG')}`;
     case 'sources': return `
       <div class="section-subtitle">SOURCE PROVENANCE</div><div class="source-list">${dataLinks.map(([label,url])=>`<div class="source-item"><div class="source-dot">◈</div><div><b>${esc(label)}</b><small>${esc(url)}</small></div>${href(url,'↗')}</div>`).join('')}</div>
-      <div class="disclaimer">This application does not retrieve private utility accounts, personal profiles, non-public enforcement files, or deeds. External sources are not automatically joined to parcels without verified linking identifiers.</div>`;
+      <div class="disclaimer">FairProcess integration adds source-linked public code enforcement snapshot records and potential hazard overlays. It does not import FairProcess private D1 evidence, personal profiles, non-public enforcement files, or deeds. External sources are not automatically joined to parcels without verified linking identifiers.</div>`;
     default: return '';
   }
 }
@@ -219,7 +313,7 @@ function renderDossier(){
       </div>
     </div>
     <div class="dossier-tabs" role="tablist" aria-label="Property data categories">${tabs.map(([id,label])=>`<button role="tab" data-tab="${id}" class="${activeTab===id?'active':''}" aria-selected="${activeTab===id}">${label}</button>`).join('')}</div>
-    <div class="dossier-body"><div class="section-heading"><i></i>${esc(tabs.find(x=>x[0]===activeTab)?.[1])}<span>COUNTY / VERIFIED SOURCE</span></div>${tabView(activeTab,p)}</div>
+    <div class="dossier-body"><div class="section-heading"><i></i>${esc(tabs.find(x=>x[0]===activeTab)?.[1])}<span>COUNTY / SOURCE-LINKED</span></div>${tabView(activeTab,p)}</div>
   `;
   contentBox.querySelectorAll('[data-tab]').forEach(btn=>btn.addEventListener('click',()=>{
     activeTab=btn.dataset.tab;renderDossier();
@@ -242,7 +336,7 @@ function renderDossier(){
 
 async function selectParcel(chosen,{fly=true}={}){
   if(!chosen)return;
-  feature=chosen;activeTab='parcel';renderDossier();
+  feature=chosen;activeTab='parcel';loadIntelligence(chosen);
   E('#search-results').classList.add('hidden');
   E('#dossier').classList.add('mobile-open');
   if(atlas)await atlas.highlight(chosen,{fly});

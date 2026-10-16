@@ -2,6 +2,7 @@
   "version": 2,
   "framework": "vite",
   "functions": {
-    "api/gis.js": { "maxDuration": 10 }
+    "api/gis.js": { "maxDuration": 10 },
+    "api/intelligence.js": { "maxDuration": 20 }
   }
 }

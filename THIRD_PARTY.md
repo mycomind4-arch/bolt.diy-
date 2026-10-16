@@ -23,3 +23,21 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 - Public permit and record links remain subject to county systems and applicable public-access terms.
 
 Never redistribute third-party data sets as if they were licensed under the app's MIT software license.
+
+## FairProcess Maps (user-owned code)
+Property enrichment and enforcement normalization in this application are adapted from
+https://github.com/mycomind4-arch/fairprocessmaps
+particularly frontend/web/src/lib/ce-pipeline.ts and frontend/web/src/lib/recon-agents.ts.
+The source repository's LICENSE states proprietary terms. The source repository and
+new Humboldt Atlas repository are both under the user's GitHub account. This new
+code does not expose or copy private FairProcess D1, R2, authentication, uploaded
+evidence, or property project records; it queries official public ArcGIS sources.
+
+The public county code enforcement layer explicitly says "Code Enforcement Cases 1/15/2025".
+Its data is not complete for later dates. FairProcess permit-pipeline documentation
+acknowledges that the Accela ASP.NET parser does not have a verified end-to-end search.
+Humboldt Atlas therefore does not present permit absence from that pipeline.
+
+Bounding-box layer overlaps are candidates requiring verification against full GIS
+polygons and the responsible government agency. All source datasets are separately
+licensed and can change or be withdrawn.

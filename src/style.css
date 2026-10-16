@@ -295,3 +295,39 @@ a:hover{text-decoration:underline}
   .empty-state h1{font-size:29px;margin:10px 0}
 }
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* FairProcess live provenance and published county intelligence */
+.intel-state{
+  margin:15px 0 18px;padding:13px 14px;line-height:1.65;color:#a0c4bb;
+  font:10px/1.8 var(--mono);background:rgba(36,86,82,.16);
+  border:1px solid rgba(105,204,180,.3);overflow-wrap:anywhere
+}
+.intel-state small{font:9px/1.7 var(--mono);color:#779c9e}
+.intel-state>span{color:var(--aqua);letter-spacing:.06em}
+.intel-state.intel-warning{color:#d7ba7a;background:rgba(161,123,46,.12);border-color:rgba(218,171,79,.32)}
+.intel-state.intel-error{color:#f1aaa1;border-color:rgba(234,134,119,.45);background:rgba(191,85,65,.11)}
+.intel-loading{display:inline-block;font:20px var(--display);margin-right:8px}
+.intel-card{padding:13px 0 17px;border-bottom:1px solid var(--line)}
+.intel-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:9px;color:#e4f4ed}
+.intel-card-header b{font:600 13px/1.4 var(--display);flex:1}
+.intel-card-header span{font:9px/1.5 var(--mono);text-align:right;color:#83c5b4;max-width:45%}
+.intel-card-header span.intel-warning{color:#d4b87d}
+.intel-grid{margin-top:9px;padding:8px 10px;background:rgba(110,198,174,.055);border:1px solid var(--line)}
+.intel-entry{display:flex;align-items:flex-start;justify-content:space-between;gap:9px;padding:7px 0;border-bottom:1px solid var(--line);
+  font:10px/1.6 var(--mono)}
+.intel-entry:last-child{border-bottom:0}
+.intel-entry>span{color:#7c989d}
+.intel-entry strong{text-align:right;color:#d6e9e5;max-width:58%;overflow-wrap:anywhere;font-weight:400}
+.intel-caution{font:10px/1.7 'DM Sans',sans-serif;color:#9c9e99;margin-top:12px}
+.intel-card .source-button{font-size:9px;margin:9px 0 0}
+.case-card{margin:14px 0;border:1px solid rgba(106,193,174,.28);padding:14px;background:rgba(17,41,44,.34)}
+.case-number{font:11px var(--mono);color:var(--aqua);display:flex;justify-content:space-between;gap:10px}
+.case-number span{font:8px var(--mono);color:#d7bd83}
+.case-card h3{font:600 16px/1.4 var(--display);color:#eaf2ee;margin:12px 0 15px}
+.case-card .source-button{font-size:9px}
+@media (max-width:760px){
+  .intel-card-header{flex-wrap:wrap}
+  .intel-card-header span{max-width:100%}
+  .case-number{flex-wrap:wrap}
+}

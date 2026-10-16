@@ -11,10 +11,24 @@ Users can select polygons by map click, look up real addresses or APNs, and insp
 - Full-screen Cesium 3D map centered on McKinleyville with satellite/OSM switch, keyless 3D relief, 2D switch, zoom/pan and county view reset.
 - County parcel click identification and APN/address search against live official ArcGIS REST GeoJSON endpoint, including outlines and fly-to highlighting.
 - Official county imagery overlays: parcel boundaries, hazards, coastal zone. Credits and service failure states.
-- Searchable right-side dossier: parcel attributes, zoning/land use, hazard indicators, permits, code enforcement, utilities/MCSD, historical parcel identifiers and full sources. Unknown values are never fabricated.
+- Searchable right-side dossier: parcel attributes, zoning/land use, hazard indicators, permits, code enforcement with dated public-case snapshots, utilities/MCSD, historical parcel identifiers and full sources. Unknown values are never fabricated.
 - Official Accela/MCSD/Planning/Assessor link-outs, downloadable selected feature GeoJSON, shareable APN deep links, and an unsent/copyable California Public Records Act request draft.
 - Responsive mobile bottom sheet.
 - Restricted, read-only server proxy with input validation and request timeout, used if direct county GIS browser requests are blocked by CORS.
+
+
+### FairProcess integration — official data enrichment
+Property selection now triggers `GET /api/intelligence?apn=...` on the same Vercel/Vite backend. It ports the user's **FairProcess Maps** public-data connector design:
+- `frontend/web/src/lib/ce-pipeline.ts`: exact APN normalization and published code-enforcement records from `Web/Housing_Public/MapServer/7` (layer explicitly dated **January 15, 2025**).
+- `frontend/web/src/lib/recon-agents.ts`: concurrent county zoning, plan, hazard, wetlands, streamside, school and fire district ArcGIS queries with partial-failure handling and source links.
+- `frontend/web/src/lib/permit-pipeline.ts`: conservatively keeps permits **unverified** because the portal requires additional session/postback state and does not return reliably parsed results.
+
+The implementation is standalone and independent of FairProcess's authenticated Cloudflare D1/R2 account. No private evidence records or org/user data are exposed or copied. On each parcel selection the request retrieves the **official live county GIS parcel feature** by normalized APN; it then requests the published enforcement snapshot by that same APN and evaluates allowlisted GIS layers against the trusted parcel's **bounding box**. These spatial hits are **candidates only**, not precise polygon overlap conclusions.
+
+Case statuses: `found`, `no_match_in_snapshot`, and `unavailable` must stay distinct. Absence in the 2025 layer is **not evidence** that a parcel has no code enforcement history. Some original FairProcess layers can change or become unavailable; this endpoint reports per-layer errors rather than silently returning `false`.
+
+**Endpoint source:** `api/intelligence.js`. Pure adapters: `src/shared/intelligence-core.js`. Verification tests: `tests/intelligence.test.js`.
+
 
 ### Repository origin and code reuse
 This was built in a previously empty, unused GitHub repository. The Cesium imagery and terrain provider patterns and code in `src/maps/sources.js` are **adapted from the MIT-licensed [God’s Eye View](https://github.com/bilawalsidhu/gods-eye-view)** by Bilawal Sidhu. Full notices: [THIRD_PARTY.md](./THIRD_PARTY.md). The aerial imagery, public GIS datasets, and terrain service have separate licensing and usage rules; they are **not** made MIT by the upstream software license.
